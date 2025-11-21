@@ -37,13 +37,13 @@ try {
 }
 // Log when Swagger UI is accessed, then serve it
 app.use('/api-docs', (req, res, next) => {
-    console.log(`📚 Swagger UI requested: ${req.method} ${req.originalUrl}`);
+    console.log(` Swagger UI requested: ${req.method} ${req.originalUrl}`);
     next();
 }, swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // Serve the raw generated swagger JSON and log access
 app.get('/api-docs.json', (req, res) => {
-    console.log(`📄 Swagger JSON requested: ${req.method} ${req.originalUrl}`);
+    console.log(` Swagger JSON requested: ${req.method} ${req.originalUrl}`);
     res.json(swaggerDocument);
 });
 
@@ -51,7 +51,7 @@ app.get('/api-docs.json', (req, res) => {
 app.get('/', (req, res) => {
     res.json({ 
         success: true,
-        message: '🚀 API is working!',
+        message: ' API is working!',
         timestamp: new Date().toISOString(),
         endpoints: {
             health: '/health',
@@ -65,7 +65,7 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
     res.status(200).json({
         success: true,
-        message: '✅ Server is running',
+        message: ' Server is running',
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development'
     });
@@ -75,7 +75,7 @@ app.get('/health', (req, res) => {
 app.use((req, res) => {
     res.status(404).json({
         success: false,
-        message: `❌ Route not found: ${req.method} ${req.originalUrl}`,
+        message: ` Route not found: ${req.method} ${req.originalUrl}`,
         availableEndpoints: [
             'GET /',
             'GET /health',
@@ -95,7 +95,7 @@ app.use((req, res) => {
 
 // Error handling middleware
 app.use((error, req, res, next) => {
-    console.error('❌ Error:', error);
+    console.error(' Error:', error);
     res.status(500).json({
         success: false,
         message: 'Internal Server Error',
