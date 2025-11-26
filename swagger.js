@@ -1,18 +1,5 @@
-const swaggerAutogen = require('swagger-autogen')();
-
-const outputFile = './swagger_output.json';
-const endpointsFiles = ['./server.js', './routes/items.js', './routes/users.js'];
-
-const doc = {
-  info: {
-    title: 'Project Node API',
-    description: 'Auto-generated swagger documentation'
-  },
-  host: process.env.SWAGGER_HOST || `localhost:3000`,
-  schemes: ['http']
-};
-
-
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 
 const options = {
   definition: {
@@ -22,6 +9,12 @@ const options = {
       version: '1.0.0',
       description: 'API documentation for the project with OAuth authentication',
     },
+    servers: [
+      {
+        url: `http://localhost:${process.env.PORT || 3000}`,
+        description: 'Development server'
+      }
+    ],
     components: {
       securitySchemes: {
         cookieAuth: {
@@ -45,20 +38,6 @@ const options = {
             email: {
               type: 'string',
               description: 'Email address'
-            },
-            profile: {
-              type: 'object',
-              properties: {
-                firstName: {
-                  type: 'string'
-                },
-                lastName: {
-                  type: 'string'
-                },
-                avatar: {
-                  type: 'string'
-                }
-              }
             },
             createdAt: {
               type: 'string',
@@ -91,18 +70,12 @@ const options = {
       }
     }
   },
-  apis: ['./routes/*.js'], // Path to the API routes
+  apis: ['./routes/*.js'], // Path to your route files
 };
-
 
 const specs = swaggerJsdoc(options);
 
-
-
-swaggerAutogen(outputFile, endpointsFiles, doc).then(() => {
-  console.log('Swagger docs generated to', outputFile);
-});
-
 module.exports = (app) => {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+  console.log('📚 Swagger documentation available at /api-docs');
 };

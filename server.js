@@ -1,32 +1,39 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const mongoose = require('mongoose'); // ADD THIS - missing import
+const session = require('express-session'); // ADD THIS - missing import
 const swaggerUi = require('swagger-ui-express');
-const connectDB = require('./data/database'); // 
-const passport = require('./data/passport'); // 
-const authRoutes = require('./routes/auth'); //
-const swaggerSetup = require('./swagger'); //
+const connectDB = require('./data/database');
+const passport = require('./data/passport');
+const authRoutes = require('./routes/auth');
+const swaggerSetup = require('./swagger');
+const { requireAuth } = require('./middleware/auth'); // ADD THIS - missing import
 
 // Load env vars
-dotenv.config();
+require('dotenv').config();
+
+
+const port = process.env.PORT || 3000;
+
+const config = {
+  authRequired: false,
+  auth0Logout: true,
+  secret: process.env.SECRET,
+  baseURL: process.env.BASE_URL,
+  clientID: process.env.CLIENT_ID,
+  issuerBaseURL: process.env.ISSUER_BASE_URL,
+};
 
 // Connect to database
 connectDB();
 
 const app = express();
 
-
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/project-node', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
-
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-
 
 // Session configuration
 app.use(session({
@@ -38,8 +45,6 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
-
-
 
 // Passport middleware
 app.use(passport.initialize());
@@ -61,45 +66,7 @@ app.get('/api/protected-data', requireAuth, (req, res) => {
   });
 });
 
-
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('Error:', error);
-  
-  if (error.name === 'ValidationError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Validation Error',
-      errors: Object.values(error.errors).map(e => e.message)
-    });
-  }
-  
-  if (error.name === 'MongoError' && error.code === 11000) {
-    return res.status(409).json({
-      success: false,
-      message: 'Duplicate key error'
-    });
-  }
-  
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error'
-  });
-});
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
-});
-
-
-
-
-// Routes
+// Your existing routes
 app.use('/api/items', require('./routes/items'));
 app.use('/api/users', require('./routes/users'));
 
@@ -117,6 +84,7 @@ try {
         paths: {}
     };
 }
+
 // Log when Swagger UI is accessed, then serve it
 app.use('/api-docs', (req, res, next) => {
     console.log(` Swagger UI requested: ${req.method} ${req.originalUrl}`);
@@ -138,7 +106,10 @@ app.get('/', (req, res) => {
         endpoints: {
             health: '/health',
             items: '/api/items',
-            users: '/api/users'
+            users: '/api/users',
+            auth: '/auth',
+            protected: '/api/protected-data',
+            docs: '/api-docs'
         }
     });
 });
@@ -149,7 +120,8 @@ app.get('/health', (req, res) => {
         success: true,
         message: ' Server is running',
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        user: req.user ? 'Authenticated' : 'Not authenticated'
     });
 });
 
@@ -170,7 +142,12 @@ app.use((req, res) => {
             'POST /api/users',
             'GET /api/users/:id',
             'PUT /api/users/:id',
-            'DELETE /api/users/:id'
+            'DELETE /api/users/:id',
+            'POST /auth/register',
+            'POST /auth/login',
+            'POST /auth/logout',
+            'GET /auth/me',
+            'GET /api/protected-data'
         ]
     });
 });
@@ -193,4 +170,6 @@ app.listen(PORT, () => {
     console.log(` Health Check: http://localhost:${PORT}/health`);
     console.log(` Items API: http://localhost:${PORT}/api/items`);
     console.log(` Users API: http://localhost:${PORT}/api/users`);
+    console.log(` Auth API: http://localhost:${PORT}/auth`);
+    console.log(` API Docs: http://localhost:${PORT}/api-docs`);
 });
