@@ -4,15 +4,15 @@ const LocalStrategy = require('passport-local').Strategy
 let User;
 try {
   User = require('../models/user');
-  console.log('✅ User model loaded successfully');
+  console.log(' User model loaded successfully');
 } catch (error) {
-  console.log('❌ User model not found:', error.message);
-  console.log('📁 Current directory:', __dirname);
+  console.log(' User model not found:', error.message);
+  console.log(' Current directory:', __dirname);
   
   // Fallback for testing
   User = {
     findOne: async (query) => {
-      console.log('🔍 Mock User.findOne called with:', query);
+      console.log(' Mock User.findOne called with:', query);
       // Return a mock user for testing
       if (query.email === 'test@test.com') {
         return {
@@ -36,7 +36,7 @@ passport.use(new LocalStrategy({
   usernameField: 'email'
 }, async (email, password, done) => {
   try {
-    console.log('🔐 Login attempt for:', email);
+    console.log(' Login attempt for:', email);
     
     const user = await User.findOne({ email: email.toLowerCase() });
     
@@ -55,10 +55,10 @@ passport.use(new LocalStrategy({
       return done(null, false, { message: 'Invalid email or password' });
     }
     
-    console.log('✅ Login successful');
+    console.log(' Login successful');
     return done(null, user);
   } catch (error) {
-    console.error('💥 Login error:', error);
+    console.error(' Login error:', error);
     return done(error);
   }
 }));
