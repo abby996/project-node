@@ -9,7 +9,7 @@ try {
   console.log(' User model not found:', error.message);
   console.log(' Current directory:', __dirname);
   
-  // Fallback for testing
+  // Callback for testing
   User = {
     findOne: async (query) => {
       console.log(' Mock User.findOne called with:', query);
