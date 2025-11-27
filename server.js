@@ -1,29 +1,17 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const mongoose = require('mongoose'); // ADD THIS - missing import
-const session = require('express-session'); // ADD THIS - missing import
+const mongoose = require('mongoose');
+const session = require('express-session');
 const swaggerUi = require('swagger-ui-express');
 const connectDB = require('./data/database');
 const passport = require('./data/passport');
 const authRoutes = require('./routes/auth');
 const swaggerSetup = require('./swagger');
-const { requireAuth } = require('./middleware/auth'); // ADD THIS - missing import
+const { requireAuth } = require('./middleware/auth');
 
 // Load env vars
-require('dotenv').config();
-
-
-const port = process.env.PORT || 3000;
-
-const config = {
-  authRequired: false,
-  auth0Logout: true,
-  secret: process.env.SECRET,
-  baseURL: process.env.BASE_URL,
-  clientID: process.env.CLIENT_ID,
-  issuerBaseURL: process.env.ISSUER_BASE_URL,
-};
+dotenv.config();
 
 // Connect to database
 connectDB();
