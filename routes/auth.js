@@ -10,14 +10,72 @@ const router = express.Router();
 router.post('/register', 
   requireNoAuth,
   [
-    body('email').isEmail(),
-    body('password').isLength({ min: 6 })
+    body('username')
+      .isLength({ min: 3, max: 30 })
+      .withMessage('Username must be between 3 and 30 characters'),
+    body('email')
+      .isEmail()
+      .withMessage('Please provide a valid email')
+      .normalizeEmail(),
+    body('password')
+      .isLength({ min: 6 })
+      .withMessage('Password must be at least 6 characters long')
   ],
   handleValidationErrors,
   async (req, res, next) => {
-    // Your existing registration logic
+    try {
+      const { username, email, password } = req.body;
+
+      console.log(' Registration attempt:', { username, email });
+
+      // Check if user already exists
+      const existingUser = await User.findOne({
+        $or: [{ email }, { username }]
+      });
+
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: 'User with this email or username already exists'
+        });
+      }
+
+      // Create new user
+      const user = new User({
+        username,
+        email,
+        password
+      });
+
+      await user.save();
+      console.log(' User saved to database:', user.email);
+
+      // Log in user automatically after registration
+      req.login(user, (err) => {
+        if (err) {
+          console.error(' Login after registration failed:', err);
+          return next(err);
+        }
+        
+        console.log(' Registration and login successful for:', user.email);
+        return res.status(201).json({
+          success: true,
+          message: 'Registration successful',
+          user: {
+            id: user._id,
+            username: user.username,
+            email: user.email,
+            createdAt: user.createdAt
+          }
+        });
+      });
+    } catch (error) {
+      console.error(' Registration error:', error);
+      next(error);
+    }
   }
 );
+
 
 router.post('/login',
   requireNoAuth,
