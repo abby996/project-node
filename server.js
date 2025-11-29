@@ -16,6 +16,8 @@ dotenv.config();
 // Connect to database
 connectDB();
 
+
+
 const app = express();
 
 // Middleware
@@ -23,16 +25,39 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session configuration
+
+// CORS configuration for production
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? [process.env.RENDER_EXTERNAL_URL, 'https://project-node-x55j.onrender.com']
+    : ['http://localhost:3000', 'http://localhost:3001'],
+  credentials: true
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+// Session configuration for production
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  secret: process.env.SESSION_SECRET || 'fallback-secret-key',
   resave: false,
   saveUninitialized: false,
+  store: process.env.NODE_ENV === 'production' ? MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI,
+    collectionName: 'sessions'
+  }) : null,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
   }
 }));
+
+// Trust proxy for production (important for Render)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
 // Passport middleware
 app.use(passport.initialize());
@@ -102,6 +127,17 @@ app.get('/', (req, res) => {
     });
 });
 
+// Add this health check for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Server is healthy',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
+
 // Health check route
 app.get('/health', (req, res) => {
     res.status(200).json({
@@ -152,12 +188,8 @@ app.use((error, req, res, next) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-    console.log(` Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-    console.log(` Base URL: http://localhost:${PORT}`);
-    console.log(` Health Check: http://localhost:${PORT}/health`);
-    console.log(` Items API: http://localhost:${PORT}/api/items`);
-    console.log(` Users API: http://localhost:${PORT}/api/users`);
-    console.log(` Auth API: http://localhost:${PORT}/auth`);
-    console.log(` API Docs: http://localhost:${PORT}/api-docs`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(` Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log(` Environment: ${process.env.NODE_ENV}`);
+  console.log(` Database: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'}`);
 });

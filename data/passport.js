@@ -1,67 +1,130 @@
 const passport = require('passport');
-const LocalStrategy = require('passport-local').Strategy
-// Try to load User model with better error handling
-let User;
-try {
-  User = require('../models/user');
-  console.log(' User model loaded successfully');
-} catch (error) {
-  console.log(' User model not found:', error.message);
-  console.log(' Current directory:', __dirname);
-  
-  // Callback for testing
-  User = {
-    findOne: async (query) => {
-      console.log(' Mock User.findOne called with:', query);
-      // Return a mock user for testing
-      if (query.email === 'test@test.com') {
-        return {
-          id: '1',
-          username: 'testuser',
-          email: 'test@test.com',
-          comparePassword: async (password) => password === 'password123'
-        };
-      }
-      return null;
-    },
-    findById: async (id) => ({
-      id: id,
-      username: 'testuser',
-      email: 'test@test.com'
-    })
-  };
-}
+const LocalStrategy = require('passport-local').Strategy;
+const User = require('../models/user');
 
+// Local Strategy
 passport.use(new LocalStrategy({
   usernameField: 'email'
 }, async (email, password, done) => {
   try {
-    console.log(' Login attempt for:', email);
-    
     const user = await User.findOne({ email: email.toLowerCase() });
     
     if (!user) {
-      console.log('❌ User not found');
       return done(null, false, { message: 'Invalid email or password' });
     }
     
-    // Handle both real and mock users
-    const isMatch = user.comparePassword 
-      ? await user.comparePassword(password)
-      : (password === 'password123'); // Default for testing
+    if (!user.password) {
+      return done(null, false, { message: 'Please use OAuth login' });
+    }
     
+    const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      console.log('❌ Password mismatch');
       return done(null, false, { message: 'Invalid email or password' });
     }
     
-    console.log(' Login successful');
     return done(null, user);
   } catch (error) {
-    console.error(' Login error:', error);
     return done(error);
   }
 }));
+
+// Conditionally load Google OAuth only if credentials are available
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  const GoogleStrategy = require('passport-google-oauth20').Strategy;
+  
+  passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: process.env.NODE_ENV === 'production' 
+      ? `${process.env.RENDER_EXTERNAL_URL}/auth/google/callback`
+      : "/auth/google/callback"
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      let user = await User.findOne({
+        $or: [
+          { googleId: profile.id },
+          { email: profile.emails[0].value }
+        ]
+      });
+      
+      if (user) {
+        if (!user.googleId) {
+          user.googleId = profile.id;
+          await user.save();
+        }
+        return done(null, user);
+      }
+      
+      user = await User.create({
+        googleId: profile.id,
+        username: profile.emails[0].value.split('@')[0],
+        email: profile.emails[0].value,
+        profile: {
+          firstName: profile.name.givenName,
+          lastName: profile.name.familyName,
+          avatar: profile.photos[0].value
+        }
+      });
+      
+      return done(null, user);
+    } catch (error) {
+      return done(error);
+    }
+  }));
+  
+  console.log(' Google OAuth strategy loaded');
+} else {
+  console.log('  Google OAuth not configured - missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET');
+}
+
+// Conditionally load GitHub OAuth only if credentials are available
+if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
+  const GitHubStrategy = require('passport-github2').Strategy;
+  
+  passport.use(new GitHubStrategy({
+    clientID: process.env.GITHUB_CLIENT_ID,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    callbackURL: process.env.NODE_ENV === 'production'
+      ? `${process.env.RENDER_EXTERNAL_URL}/auth/github/callback`
+      : "/auth/github/callback",
+    scope: ['user:email']
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      let user = await User.findOne({
+        $or: [
+          { githubId: profile.id },
+          { email: profile.emails && profile.emails[0].value }
+        ]
+      });
+      
+      if (user) {
+        if (!user.githubId) {
+          user.githubId = profile.id;
+          await user.save();
+        }
+        return done(null, user);
+      }
+      
+      user = await User.create({
+        githubId: profile.id,
+        username: profile.username,
+        email: profile.emails ? profile.emails[0].value : `${profile.username}@github.com`,
+        profile: {
+          firstName: profile.displayName,
+          avatar: profile.photos[0].value
+        }
+      });
+      
+      return done(null, user);
+    } catch (error) {
+      return done(error);
+    }
+  }));
+  
+  console.log(' GitHub OAuth strategy loaded');
+} else {
+  console.log('  GitHub OAuth not configured - missing GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET');
+}
 
 passport.serializeUser((user, done) => {
   done(null, user.id);
@@ -76,4 +139,5 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+console.log(' Passport configured successfully');
 module.exports = passport;
