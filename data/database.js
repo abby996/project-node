@@ -11,4 +11,33 @@ const connectDB = async () => {
     }
 };
 
+
+// Mock database functions for development
+const mockDB = {
+  users: [],
+  
+  async createUser(userData) {
+    const user = {
+      _id: Date.now().toString(),
+      ...userData,
+      createdAt: new Date(),
+      comparePassword: function(password) {
+        return Promise.resolve(password === this.password);
+      }
+    };
+    this.users.push(user);
+    return user;
+  },
+  
+  async findUser(query) {
+    return this.users.find(user => 
+      user.email === query.email || user.username === query.username
+    );
+  },
+  
+  async findUserById(id) {
+    return this.users.find(user => user._id === id);
+  }
+};
+
 module.exports = connectDB;
