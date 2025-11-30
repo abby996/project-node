@@ -2,51 +2,44 @@ const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const User = require('../models/user');
 
-// Local Strategy
+// LOCAL STRATEGY
 passport.use(new LocalStrategy({
   usernameField: 'email'
 }, async (email, password, done) => {
   try {
     const user = await User.findOne({ email: email.toLowerCase() });
-    
-    if (!user) {
-      return done(null, false, { message: 'Invalid email or password' });
-    }
-    
-    if (!user.password) {
-      return done(null, false, { message: 'Please use OAuth login' });
-    }
-    
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return done(null, false, { message: 'Invalid email or password' });
-    }
-    
+
+    if (!user) return done(null, false, { message: 'Invalid credentials' });
+    if (!user.password) return done(null, false, { message: 'Use OAuth login' });
+
+    const match = await user.comparePassword(password);
+    if (!match) return done(null, false, { message: 'Invalid credentials' });
+
     return done(null, user);
-  } catch (error) {
-    return done(error);
+  } catch (e) {
+    return done(e);
   }
 }));
 
-// Conditionally load Google OAuth only if credentials are available
+/* --------------------------
+    GOOGLE OAUTH
+--------------------------- */
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   const GoogleStrategy = require('passport-google-oauth20').Strategy;
-  
+
   passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.NODE_ENV === 'production' 
+    callbackURL: process.env.NODE_ENV === 'production'
       ? `${process.env.RENDER_EXTERNAL_URL}/auth/google/callback`
-      : "/auth/google/callback"
+      : "http://localhost:3000/auth/google/callback"
   }, async (accessToken, refreshToken, profile, done) => {
     try {
-      let user = await User.findOne({
-        $or: [
-          { googleId: profile.id },
-          { email: profile.emails[0].value }
-        ]
-      });
-      
+      const email = profile.emails?.[0]?.value || null;
+      const avatar = profile.photos?.[0]?.value || null;
+
+      let user = await User.findOne({ $or: [{ googleId: profile.id }, { email }] });
+
       if (user) {
         if (!user.googleId) {
           user.googleId = profile.id;
@@ -54,49 +47,48 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         }
         return done(null, user);
       }
-      
+
       user = await User.create({
         googleId: profile.id,
-        username: profile.emails[0].value.split('@')[0],
-        email: profile.emails[0].value,
+        username: email ? email.split('@')[0] : profile.id,
+        email,
         profile: {
-          firstName: profile.name.givenName,
-          lastName: profile.name.familyName,
-          avatar: profile.photos[0].value
+          firstName: profile.name?.givenName || null,
+          lastName: profile.name?.familyName || null,
+          avatar
         }
       });
-      
-      return done(null, user);
-    } catch (error) {
-      return done(error);
+
+      done(null, user);
+
+    } catch (e) {
+      done(e);
     }
   }));
-  
-  console.log(' Google OAuth strategy loaded');
-} else {
-  console.log('  Google OAuth not configured - missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET');
+
+  console.log('Google OAuth loaded');
 }
 
-// Conditionally load GitHub OAuth only if credentials are available
+/* --------------------------
+    GITHUB OAUTH
+--------------------------- */
 if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
   const GitHubStrategy = require('passport-github2').Strategy;
-  
+
   passport.use(new GitHubStrategy({
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
     callbackURL: process.env.NODE_ENV === 'production'
       ? `${process.env.RENDER_EXTERNAL_URL}/auth/github/callback`
-      : "/auth/github/callback",
+      : "http://localhost:3000/auth/github/callback",
     scope: ['user:email']
   }, async (accessToken, refreshToken, profile, done) => {
     try {
-      let user = await User.findOne({
-        $or: [
-          { githubId: profile.id },
-          { email: profile.emails && profile.emails[0].value }
-        ]
-      });
-      
+      const email = profile.emails?.[0]?.value || `${profile.username}@noemail.local`;
+      const avatar = profile.photos?.[0]?.value || null;
+
+      let user = await User.findOne({ $or: [{ githubId: profile.id }, { email }] });
+
       if (user) {
         if (!user.githubId) {
           user.githubId = profile.id;
@@ -104,40 +96,40 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
         }
         return done(null, user);
       }
-      
+
       user = await User.create({
         githubId: profile.id,
         username: profile.username,
-        email: profile.emails ? profile.emails[0].value : `${profile.username}@github.com`,
+        email,
         profile: {
-          firstName: profile.displayName,
-          avatar: profile.photos[0].value
+          firstName: profile.displayName || null,
+          avatar
         }
       });
-      
-      return done(null, user);
-    } catch (error) {
-      return done(error);
+
+      done(null, user);
+
+    } catch (e) {
+      done(e);
     }
   }));
-  
-  console.log(' GitHub OAuth strategy loaded');
-} else {
-  console.log('  GitHub OAuth not configured - missing GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET');
+
+  console.log('GitHub OAuth loaded');
 }
 
-passport.serializeUser((user, done) => {
-  done(null, user.id);
-});
+/* --------------------------
+    SESSION HANDLING
+--------------------------- */
+
+passport.serializeUser((user, done) => done(null, user.id));
 
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await User.findById(id);
     done(null, user);
-  } catch (error) {
-    done(error);
+  } catch (e) {
+    done(e);
   }
 });
 
-console.log(' Passport configured successfully');
 module.exports = passport;

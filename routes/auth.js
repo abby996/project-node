@@ -6,100 +6,157 @@ const User = require('../models/user');
 
 const router = express.Router();
 
-// Local authentication routes (your existing code)
-router.post('/register', 
+/**
+ * @swagger
+ * tags:
+ *   - name: Auth
+ *     description: Local authentication (register/login)
+ *   - name: OAuth
+ *     description: Google & GitHub OAuth
+ */
+
+/* ----------------------- REGISTER ----------------------- */
+/**
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RegisterRequest'
+ *     responses:
+ *       201:
+ *         description: Registration successful
+ *       409:
+ *         description: User already exists
+ */
+router.post(
+  '/register',
   requireNoAuth,
   [
-    body('username')
-      .isLength({ min: 3, max: 30 })
-      .withMessage('Username must be between 3 and 30 characters'),
-    body('email')
-      .isEmail()
-      .withMessage('Please provide a valid email')
-      .normalizeEmail(),
-    body('password')
-      .isLength({ min: 6 })
-      .withMessage('Password must be at least 6 characters long')
+    body('username').isLength({ min: 3, max: 30 }),
+    body('email').isEmail().normalizeEmail(),
+    body('password').isLength({ min: 6 })
   ],
   handleValidationErrors,
   async (req, res, next) => {
     try {
       const { username, email, password } = req.body;
 
-      console.log(' Registration attempt:', { username, email });
+      const exists = await User.findOne({ $or: [{ email }, { username }] });
+      if (exists)
+        return res.status(409).json({ success: false, message: "User already exists" });
 
-      // Check if user already exists
-      const existingUser = await User.findOne({
-        $or: [{ email }, { username }]
-      });
-
-      if (existingUser) {
-        return res.status(409).json({
-          success: false,
-          message: 'User with this email or username already exists'
-        });
-      }
-
-      // Create new user
-      const user = new User({
-        username,
-        email,
-        password
-      });
-
+      const user = new User({ username, email, password });
       await user.save();
-      console.log(' User saved to database:', user.email);
 
-      // Log in user automatically after registration
       req.login(user, (err) => {
-        if (err) {
-          console.error(' Login after registration failed:', err);
-          return next(err);
-        }
-        
-        console.log(' Registration and login successful for:', user.email);
-        return res.status(201).json({
+        if (err) return next(err);
+
+        res.status(201).json({
           success: true,
-          message: 'Registration successful',
-          user: {
-            id: user._id,
-            username: user.username,
-            email: user.email,
-            createdAt: user.createdAt
-          }
+          message: "Registration successful",
+          user
         });
       });
-    } catch (error) {
-      console.error(' Registration error:', error);
-      next(error);
+    } catch (err) {
+      next(err);
     }
   }
 );
 
-
-router.post('/login',
+/* ----------------------- LOGIN ----------------------- */
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Login user (local authentication)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       401:
+ *         description: Invalid credentials
+ */
+router.post(
+  '/login',
   requireNoAuth,
   passport.authenticate('local'),
   (req, res) => {
-    res.json({
-      success: true,
-      message: 'Login successful',
-      user: req.user
-    });
+    res.json({ success: true, message: 'Login successful', user: req.user });
   }
 );
 
-// Google OAuth routes
+/* ----------------------- LOGOUT ----------------------- */
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Logout current user
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Logged out
+ */
+router.post('/logout', (req, res) => {
+  req.logout(() => {
+    res.json({ success: true, message: "Logged out" });
+  });
+});
+
+/* ----------------------- CURRENT USER ----------------------- */
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Get current authenticated user
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Returns user or null
+ */
+router.get('/me', (req, res) => {
+  res.json({ success: true, user: req.user || null });
+});
+
+/* ----------------------- GOOGLE OAUTH ----------------------- */
+/**
+ * @swagger
+ * /auth/google:
+ *   get:
+ *     summary: Start Google OAuth flow
+ *     tags: [OAuth]
+ *     responses:
+ *       302:
+ *         description: Redirect to Google
+ */
 router.get('/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
-router.get('/google/callback',
-  passport.authenticate('google', { 
-    failureRedirect: process.env.NODE_ENV === 'production' 
-      ? `${process.env.RENDER_EXTERNAL_URL}/login?error=auth_failed`
-      : '/login?error=auth_failed' 
-  }),
+/**
+ * @swagger
+ * /auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback
+ *     tags: [OAuth]
+ *     responses:
+ *       302:
+ *         description: Redirect after Google login
+ */
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { failureRedirect: '/auth/oauth-failure' }),
   (req, res) => {
     res.redirect(process.env.NODE_ENV === 'production'
       ? process.env.RENDER_EXTERNAL_URL
@@ -108,17 +165,34 @@ router.get('/google/callback',
   }
 );
 
-// GitHub OAuth routes
+/* ----------------------- GITHUB OAUTH ----------------------- */
+/**
+ * @swagger
+ * /auth/github:
+ *   get:
+ *     summary: Start GitHub OAuth flow
+ *     tags: [OAuth]
+ *     responses:
+ *       302:
+ *         description: Redirect to GitHub
+ */
 router.get('/github',
   passport.authenticate('github', { scope: ['user:email'] })
 );
 
-router.get('/github/callback',
-  passport.authenticate('github', { 
-    failureRedirect: process.env.NODE_ENV === 'production'
-      ? `${process.env.RENDER_EXTERNAL_URL}/login?error=auth_failed`
-      : '/login?error=auth_failed'
-  }),
+/**
+ * @swagger
+ * /auth/github/callback:
+ *   get:
+ *     summary: GitHub OAuth callback
+ *     tags: [OAuth]
+ *     responses:
+ *       302:
+ *         description: Redirect after GitHub login
+ */
+router.get(
+  '/github/callback',
+  passport.authenticate('github', { failureRedirect: '/auth/oauth-failure' }),
   (req, res) => {
     res.redirect(process.env.NODE_ENV === 'production'
       ? process.env.RENDER_EXTERNAL_URL
@@ -127,18 +201,20 @@ router.get('/github/callback',
   }
 );
 
-// Logout route
-router.post('/logout', (req, res) => {
-  req.logout(() => {
-    res.json({ success: true, message: 'Logout successful' });
+/* ----------------------- OAUTH FAILURE ----------------------- */
+router.get('/oauth-failure', (req, res) => {
+  res.status(401).json({
+    success: false,
+    message: 'OAuth authentication failed'
   });
 });
 
-// Get current user
-router.get('/me', (req, res) => {
+/* ----------------------- OAUTH STATUS ----------------------- */
+router.get('/oauth-status', (req, res) => {
   res.json({
     success: true,
-    user: req.user || null
+    google: { enabled: !!process.env.GOOGLE_CLIENT_ID },
+    github: { enabled: !!process.env.GITHUB_CLIENT_ID }
   });
 });
 

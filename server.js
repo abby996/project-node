@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');   // ✅ FIXED
 const swaggerUi = require('swagger-ui-express');
 const connectDB = require('./data/database');
 const passport = require('./data/passport');
@@ -10,42 +11,33 @@ const authRoutes = require('./routes/auth');
 const swaggerSetup = require('./swagger');
 const { requireAuth } = require('./middleware/auth');
 
-// Load env vars
 dotenv.config();
 
-// Connect to database
+// Connect DB
 connectDB();
-
-
 
 const app = express();
 
 // Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
-
-// CORS configuration for production
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? [process.env.RENDER_EXTERNAL_URL, 'https://project-node-x55j.onrender.com']
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
+    origin: true,
+    credentials: true
 }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session configuration for production
+// =============================
+// ✅ SESSION FIXED
+// =============================
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fallback-secret-key',
   resave: false,
   saveUninitialized: false,
-  store: process.env.NODE_ENV === 'production' ? MongoStore.create({
-    mongoUrl: process.env.MONGODB_URI,
-    collectionName: 'sessions'
-  }) : null,
+  store: MongoStore.create({
+      mongoUrl: process.env.MONGODB_URI,
+      collectionName: 'sessions'
+  }),
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
@@ -54,22 +46,27 @@ app.use(session({
   }
 }));
 
-// Trust proxy for production (important for Render)
+// Trust proxy for Render
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-// Passport middleware
+// Passport
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Swagger documentation
+// =============================
+// 🚀 SWAGGER
+// =============================
 swaggerSetup(app);
 
-// Routes
+// =============================
+// 🚀 ROUTES
+// =============================
 app.use('/auth', authRoutes);
+app.use('/api/items', require('./routes/items'));
+app.use('/api/users', require('./routes/users'));
 
-// Protected route example
 app.get('/api/protected-data', requireAuth, (req, res) => {
   res.json({
     success: true,
@@ -79,117 +76,74 @@ app.get('/api/protected-data', requireAuth, (req, res) => {
   });
 });
 
-// Your existing routes
-app.use('/api/items', require('./routes/items'));
-app.use('/api/users', require('./routes/users'));
-
-// Swagger UI (serves generated swagger_output.json if present)
-let swaggerDocument = null;
+// =============================
+// 🚀 SWAGGER UI
+// =============================
+let swaggerDocument;
 try {
-    // prefer generated file
-    // eslint-disable-next-line global-require
-    swaggerDocument = require('./swagger_output.json');
+  swaggerDocument = require('./swagger_output.json');
 } catch (err) {
-    // fallback basic doc
-    swaggerDocument = {
-        openapi: '3.0.0',
-        info: { title: 'Project Node API', version: '1.0.0' },
-        paths: {}
-    };
+  swaggerDocument = {
+    openapi: '3.0.0',
+    info: { title: 'Project Node API', version: '1.0.0' },
+    paths: {}
+  };
 }
 
-// Log when Swagger UI is accessed, then serve it
-app.use('/api-docs', (req, res, next) => {
-    console.log(` Swagger UI requested: ${req.method} ${req.originalUrl}`);
-    next();
-}, swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// Serve the raw generated swagger JSON and log access
 app.get('/api-docs.json', (req, res) => {
-    console.log(` Swagger JSON requested: ${req.method} ${req.originalUrl}`);
-    res.json(swaggerDocument);
+  res.json(swaggerDocument);
 });
 
-// Basic route
+// ROOT ROUTE
 app.get('/', (req, res) => {
-    res.json({ 
-        success: true,
-        message: ' API is working!',
-        timestamp: new Date().toISOString(),
-        endpoints: {
-            health: '/health',
-            items: '/api/items',
-            users: '/api/users',
-            auth: '/auth',
-            protected: '/api/protected-data',
-            docs: '/api-docs'
-        }
-    });
-});
-
-// Add this health check for Render
-app.get('/health', (req, res) => {
-  res.status(200).json({
+  res.json({
     success: true,
-    message: 'Server is healthy',
+    message: 'API is working!',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    endpoints: {
+      health: '/health',
+      items: '/api/items',
+      users: '/api/users',
+      auth: '/auth',
+      protected: '/api/protected-data',
+      docs: '/api-docs'
+    }
   });
 });
 
-// Health check route
+// HEALTH
 app.get('/health', (req, res) => {
-    res.status(200).json({
-        success: true,
-        message: ' Server is running',
-        timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development',
-        user: req.user ? 'Authenticated' : 'Not authenticated'
-    });
+  res.json({
+    success: true,
+    message: 'Server running',
+    environment: process.env.NODE_ENV,
+    user: req.user ? 'Authenticated' : 'Not authenticated'
+  });
 });
 
-// Handle undefined routes (404)
+// 404 HANDLER
 app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        message: ` Route not found: ${req.method} ${req.originalUrl}`,
-        availableEndpoints: [
-            'GET /',
-            'GET /health',
-            'GET /api/items',
-            'POST /api/items',
-            'GET /api/items/:id',
-            'PUT /api/items/:id',
-            'DELETE /api/items/:id',
-            'GET /api/users',
-            'POST /api/users',
-            'GET /api/users/:id',
-            'PUT /api/users/:id',
-            'DELETE /api/users/:id',
-            'POST /auth/register',
-            'POST /auth/login',
-            'POST /auth/logout',
-            'GET /auth/me',
-            'GET /api/protected-data'
-        ]
-    });
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`
+  });
 });
 
-// Error handling middleware
-app.use((error, req, res, next) => {
-    console.error(' Error:', error);
-    res.status(500).json({
-        success: false,
-        message: 'Internal Server Error',
-        error: process.env.NODE_ENV === 'production' ? {} : error.message
-    });
+// ERROR HANDLER
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    success: false,
+    message: 'Internal Server Error',
+    error: process.env.NODE_ENV === 'production' ? {} : err.message
+  });
 });
 
+// START SERVER
 const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(` Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-  console.log(` Environment: ${process.env.NODE_ENV}`);
-  console.log(` Database: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Swagger: http://localhost:${PORT}/api-docs`);
 });
