@@ -6,7 +6,7 @@ const swaggerUi = require('swagger-ui-express');
 // Determine the correct server URL based on environment
 const getServerUrl = () => {
   if (process.env.NODE_ENV === 'production') {
-    return process.env.RENDER_EXTERNAL_URL || 'https://your-app-name.onrender.com';
+    return process.env.RENDER_EXTERNAL_URL || 'https://project-node-x55j.onrender.com';
   }
   return `http://localhost:${process.env.PORT || 3000}`;
 };

@@ -1,14 +1,14 @@
-{
+ {
   "swagger": "2.0",
   "info": {
     "title": "Project Node API",
     "description": "Auto-generated swagger documentation",
     "version": "1.0.0"
   },
-  "host": "localhost:3000",
+  "host": "https://project-node-x55j.onrender.com",
   "basePath": "/",
   "schemes": [
-    "http"
+    "https"
   ],
   "paths": {
     "/api/protected-data": {
